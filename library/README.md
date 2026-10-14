@@ -263,6 +263,6 @@ PaddleOCR 자체가 읽는 변수(참고용, `ocrpipe` 가 관여하지 않음):
 |------|------|
 | `PADDLE_PDX_MODEL_SOURCE` | 모델 다운로드 소스: `huggingface`(기본)/`modelscope`/`aistudio`/`bos` |
 
-## 이관·인수인계
+## 다른 환경에서 실행
 
-다른 컴퓨터/서버로 옮겨 이어서 작업하는 절차는 [`HANDOFF.md`](HANDOFF.md) 를 보세요.
+위 설치 절차에 따라 Python 가상환경과 CPU/GPU 런타임을 준비하고, 모델·입력 문서·출력 경로를 해당 환경에 맞게 설정합니다. 실제 입력 문서와 결과 파일은 소스와 별도로 관리합니다.

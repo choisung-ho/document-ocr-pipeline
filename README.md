@@ -1,10 +1,46 @@
-# 문서 전처리·OCR 테스트 앱
+# 문서 전처리·OCR 파이프라인
 
-HWPX, DOCX, PDF와 이미지 파일을 Markdown과 정규화 JSON으로 변환하는 테스트 앱입니다. 원문 구조를 우선 보존하고 OCR이 필요한 페이지·영역·이미지만 `PaddleOCR-VL-1.6`으로 처리합니다. 다른 OCR 모델은 사용하지 않습니다.
+HWPX·DOCX·PDF·이미지를 Markdown과 구조화 JSON으로 바꾸는 프로젝트입니다. 문서의 원문 구조를 보존하면서 OCR이 필요한 영역만 처리하는 웹앱과, 재사용 가능한 `ocrpipe` 라이브러리를 함께 제공합니다.
+
+## 해결하려던 문제
+
+문서 전체를 OCR하면 원래 읽을 수 있던 텍스트까지 다시 인식하면서 오류와 처리 비용이 늘어납니다. 반대로 텍스트만 추출하면 이미지·차트와 스캔 페이지의 정보를 놓칩니다. 문서 유형과 페이지 상태를 먼저 판단하고 원문 추출과 OCR을 나눠 처리하도록 구성했습니다.
+
+## 처리 흐름
+
+```mermaid
+flowchart LR
+    A[문서 · 이미지 업로드] --> B[형식 · 페이지 분석]
+    B --> C[원문 텍스트 · 표 추출]
+    B --> D[필요한 영역 OCR]
+    C --> E[구조화 · 수치 · 차트 매핑]
+    D --> E
+    E --> F[Markdown · JSON · 결과 화면]
+```
+
+## 설계와 문제 해결
+
+- **원문 보존:** 텍스트 PDF·DOCX·HWPX는 원문 구조를 추출하고 포함 이미지를 별도로 처리합니다.
+- **부분 OCR:** 스캔 페이지는 전체 OCR, 텍스트와 이미지가 섞인 페이지는 필요한 영역만 OCR합니다.
+- **실패 격리:** OCR 워커가 비정상 종료되면 재기동·재시도하고 해당 페이지의 실패와 서버의 상태를 구분합니다.
+- **결과 활용:** 텍스트 외에 표·이미지·차트 설명과 단위가 포함된 수치를 구조화합니다.
+- **재사용:** 별도 `ocrpipe` 라이브러리에 추출·OCR·후처리와 CER 평가 도구를 구성했습니다. 웹앱과 라이브러리는 각각의 구현이며 자동으로 통합된 상태는 아닙니다.
+
+## 구성과 기술
+
+| 구성 | 역할 |
+| --- | --- |
+| `app/` | FastAPI 업로드·처리 작업·결과 조회, HTML/JavaScript 화면 |
+| `app/document_parsers.py` | PyMuPDF·python-docx·HWPX XML 기반 원문 추출 |
+| `app/paddle_worker.py` | PaddleOCR-VL-1.6 추론 프로세스 |
+| `library/ocrpipe/` | 재사용 라이브러리·CLI·CER 평가 도구 |
+| `tests/` | 합성 문서와 모의 OCR 기반 처리 흐름 검사 |
+
+## 검증과 한계
+
+기존 테스트 13개로 혼합 PDF, DOCX/HWPX, 수치·차트 매핑과 워커 복구를 확인했습니다. 실제 OCR 정확도와 속도는 이 테스트에 포함되지 않습니다. 라이브러리의 CER 도구는 정답 텍스트와 비교하는 별도 평가에 사용하며, 모델 신뢰도를 정답률로 해석하지 않습니다.
 
 ## 실행
-
-저장소를 내려받은 뒤 프로젝트 폴더에서 실행합니다:
 
 ```bash
 git clone https://github.com/choisung-ho/document-ocr-pipeline.git
@@ -16,139 +52,10 @@ pip install -r requirements-ocr.txt
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-브라우저에서 `http://127.0.0.1:8000`을 엽니다.
+브라우저에서 `http://127.0.0.1:8000`을 엽니다. 실제 OCR 없이 처리 흐름을 확인하려면 `OCR_MOCK=1`로 실행합니다. NVIDIA GPU에서는 CUDA 환경에 맞는 런타임을 준비해야 합니다.
 
-## 처리 정책
+- [처리 옵션·결과 형식·CPU/GPU 안내](docs/USAGE.md)
+- [ocrpipe 설치·API·평가 도구](library/README.md)
+- [검증 기록](docs/PUBLIC_VALIDATION.md)
 
-- OCR은 이미지가 있는 페이지·영역에만 수행합니다. 이미지가 없는 텍스트 페이지는 원문 추출만 하고 OCR을 생략합니다(`native` 모드).
-- 이미지 유무는 페이지 자원 목록으로 먼저 빠르게 확인하고, 이미지가 있을 때만 정밀 영역 분석을 수행합니다. OCR이 없는 페이지는 고해상도(2배) 렌더링 대신 1배 미리보기만 생성합니다.
-- PDF 처리는 2단계 파이프라인으로 동작합니다: 프리페치 스레드가 다음 페이지들의 분석·렌더링·원문 추출을 미리 수행하고(최대 3페이지 선행), 메인 루프는 OCR·병합만 담당합니다. OCR 추론 중에도 분석이 병렬로 진행되어 대기 시간이 줄어듭니다. OCR 추론 자체는 단일 파이프라인 보호를 위해 직렬로 유지됩니다.
-- 스캔 PDF: 텍스트 레이어가 없고 이미지가 있는 페이지 전체를 PaddleOCR-VL-1.6으로 처리합니다. 텍스트·이미지가 모두 없는 빈 페이지는 OCR을 생략합니다.
-- 텍스트 PDF: 원문 텍스트를 직접 추출하고 이미지 영역만 PaddleOCR-VL-1.6으로 처리합니다. 표 영역 OCR은 기본 비활성화이며 `OCR_INCLUDE_TABLE_REGIONS=1`로 켤 수 있습니다(표 텍스트 자체는 원문 추출로 확보됩니다).
-- 혼합 PDF: 페이지마다 원문 추출 또는 전체 OCR 방식을 자동으로 선택합니다.
-- DOCX: python-docx로 문단·제목·표를 구조화하고 포함 이미지만 OCR합니다.
-- HWPX: XML에서 문단·표를 구조화하고 포함 이미지만 OCR합니다.
-- PNG/JPG/BMP/TIFF/WEBP: 이미지 전체를 OCR합니다.
-- PDF 이미지·차트: 이미지 블록 OCR과 차트 인식을 활성화하여 구조화 결과에 포함합니다.
-- 표: 텍스트와 Markdown 표를 함께 보존합니다.
-- 이미지: OCR 결과에 원본 자산 URL을 연결하고, 이미지 내 인식 텍스트를 `description`으로 매핑합니다.
-- 차트: 차트 인식 결과에서 X축(항목)·Y축(계열)·데이터 행을 `chart`로 구조화하고 `description`을 생성합니다.
-- 수치: `87.5%`, `5,000,000원`처럼 단위가 붙은 수치를 `metrics`(raw/value/unit)로 추출합니다. 전각 숫자(％ 등)는 반각으로 정규화합니다.
-- 저해상도 이미지: 긴 변이 기준(기본 1600px)보다 작으면 OCR 전에 확대 렌더링합니다.
-- OCR 추론은 기본적으로 별도 프로세스에서 실행됩니다. 네이티브 라이브러리(libpaddle)가 비정상 종료(세그폴트)해도 서버는 유지되고, 워커를 재기동해 1회 재시도한 뒤 실패 시 해당 페이지·이미지만 오류로 표시하고 계속 진행합니다. `OCR_SUBPROCESS=0`으로 끄면 서버 프로세스 안에서 추론합니다.
-- DOCX/HWPX 내부 이미지는 이미지 단위로 실패를 허용합니다. 한 이미지의 OCR이 실패해도 원문과 나머지 이미지는 정상 처리됩니다.
-- 증빙 문서: `rag_eligible=false`로 표시하여 후속 임베딩 대상에서 제외할 수 있습니다.
-- 업로드 원본: 기본적으로 처리 완료 후 삭제합니다. 결과와 이미지 자산은 기본 24시간 보존합니다.
-
-## 결과 형식
-
-```json
-{
-  "metadata": {
-    "doc_id": "...",
-    "filename": "보고서.pdf",
-    "title": "보고서",
-    "document_type": "general",
-    "rag_eligible": true,
-    "security_level": "internal",
-    "access_groups": ["planning"]
-  },
-  "results": [
-    {
-      "page": 1,
-      "type": "heading",
-      "text": "Ⅰ. 사업 추진 개요",
-      "markdown": "## Ⅰ. 사업 추진 개요",
-      "section_path": ["Ⅰ. 사업 추진 개요"],
-      "source_text": "Ⅰ. 사업 추진 개요",
-      "bbox": [72.0, 80.0, 240.0, 104.0],
-      "asset_url": null,
-      "description": null,
-      "metrics": null,
-      "chart": null
-    },
-    {
-      "page": 2,
-      "type": "chart",
-      "text": "연도 취업률 2024 68% 2025 72%",
-      "markdown": "| 연도 | 취업률 |\n| --- | --- |\n| 2024 | 68% |\n| 2025 | 72% |",
-      "description": "차트 데이터 2행 · X축(항목) '연도' · Y축(계열) '취업률'",
-      "metrics": [{"raw": "68%", "value": 68.0, "unit": "%"}, {"raw": "72%", "value": 72.0, "unit": "%"}],
-      "chart": {"x_axis": "연도", "series": ["취업률"], "rows": [["2024", "68%"], ["2025", "72%"]]}
-    }
-  ]
-}
-```
-
-## CPU·GPU 환경
-
-개발용 CPU 또는 Apple Silicon 환경:
-
-```bash
-pip install -r requirements-ocr.txt
-```
-
-NVIDIA GPU 서버에서는 CPU용 파일과 함께 설치하지 말고 CUDA 버전에 맞는 PaddlePaddle GPU 런타임을 사용합니다.
-
-```bash
-pip install -r requirements-ocr-gpu.txt
-PADDLE_DEVICE=gpu uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-`PaddleOCRVL` 초기화 시 `pipeline_version="v1.6"`과 레이아웃·차트·이미지 OCR·구조화 Markdown 옵션이 고정됩니다.
-
-## 환경 변수
-
-| 변수 | 기본값 | 설명 |
-| --- | --- | --- |
-| `PADDLE_DEVICE` | `cpu` | `cpu`, `gpu` 등 Paddle 장치 |
-| `OCR_MAX_UPLOAD_MB` | `100` | 최대 업로드 크기 |
-| `OCR_RETENTION_HOURS` | `24` | 결과·자산 보존 시간 |
-| `OCR_DELETE_SOURCE_AFTER_PROCESS` | `1` | 처리 후 업로드 원본 삭제 여부 |
-| `OCR_EXPECTED_PAGE_SECONDS` | `120` | 페이지 내부 OCR 예상 진행률 계산 기준 시간(초) |
-| `OCR_MIN_IMAGE_LONG_EDGE` | `1600` | 이미지 OCR 전 확대 기준(긴 변 px). `0`이면 비활성화 |
-| `OCR_INCLUDE_TABLE_REGIONS` | `0` | `1`이면 텍스트 PDF의 표 영역도 OCR 대상에 포함 |
-| `OCR_SUBPROCESS` | `1` | OCR 추론을 별도 프로세스에서 실행(크래시 격리). `0`이면 서버 내 실행 |
-| `OCR_INFERENCE_TIMEOUT_SECONDS` | `900` | 페이지·이미지 1건당 추론 제한 시간(초). `0`이면 무제한 |
-| `OCR_MOCK` | 미설정 | `1`이면 스캔 페이지 OCR을 모의 결과로 대체 |
-
-## 개발용 모의 실행
-
-```bash
-OCR_MOCK=1 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-## 구조와 검증
-
-- `app/main.py`: 업로드·작업 관리·페이지별 처리·결과 API
-- `app/document_parsers.py`: 문서별 파싱·원문 추출·구조화
-- `app/paddle_worker.py`: OCR 추론 프로세스
-- `app/templates/`, `app/static/`: 작업 진행과 결과를 보여주는 화면
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-기존 테스트는 합성 문서와 모의 OCR을 사용해 원문 추출·영역 처리·실패 격리 흐름을 확인합니다. 실제 OCR 모델의 정확도·속도를 측정하는 테스트는 아닙니다.
-
-## 공개 범위
-
-원본 업로드 문서, OCR 결과 JSON, 추출 이미지, 개인 설정은 포함하지 않습니다. 실행 시 생기는 `uploads/`, `job_results/`, `assets/`는 Git에서 제외합니다. 원래 프로젝트의 문서 전처리·OCR 기능을 공개용으로 분리한 저장소입니다.
-
-공개 준비 시 실행한 검사와 범위는 [검증 기록](docs/PUBLIC_VALIDATION.md)에 정리했습니다.
-
-## 재사용 가능한 OCR 라이브러리
-
-로컬의 `ocrpipe` 라이브러리는 [`library/`](library/README.md)에 별도로 포함했습니다. 기존 웹 앱은 유지하며, 라이브러리와 앱이 자동으로 통합됐다고 주장하지 않습니다. PDF 텍스트 레이어와 HWPX XML 본문을 직접 추출하고 이미지 OCR을 분리합니다.
-
-```bash
-pip install -e ./library
-# PaddlePaddle CPU/GPU 설치는 library/README.md의 환경별 안내 참고
-```
-
-```python
-from ocrpipe import analyze
-blocks = analyze("sample.hwpx")
-```
-
-`library/ocrpipe/eval_cer.py`에는 정답 텍스트와 비교하는 CER 측정 도구가 있습니다. 모델 신뢰도를 정확도로 표현하지 않으며 성능 개선은 별도 평가가 필요합니다. 원문 보고서·업로드 파일·정답 초안은 포함하지 않았습니다.
+원본 업무 문서, 추출 이미지와 실제 OCR 결과는 저장소에 포함하지 않습니다.
