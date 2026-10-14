@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocrpipe"
+version = "2.0.0"
+description = "문서/이미지 OCR 파이프라인 — 본문 무손실 추출 + 이미지 OCR (PaddleOCR-VL)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# 엔진은 PaddleOCR-VL 단독입니다.
+# paddleocr>=3.6 : PaddleOCR-VL 모델 v1.6 파이프라인 지원 버전(3.6.0 = 2026-05-28).
+# paddlepaddle 본체는 CPU/GPU 빌드가 갈리고 CUDA 버전마다 index-url 이 달라
+# pip 의존성으로 고정할 수 없으므로 **직접 설치**합니다(README 참고, 3.2.1 이상 필요):
+#   CPU : pip install paddlepaddle==3.2.2
+#   GPU : pip install --extra-index-url https://www.paddlepaddle.org.cn/packages/stable/cu129/ paddlepaddle-gpu==3.2.2
+dependencies = [
+    "pymupdf>=1.24",
+    "opencv-python>=4.10",
+    "numpy>=1.26",
+    "pillow>=10",
+    "paddleocr[doc-parser]>=3.6",
+]
+
+[project.scripts]
+ocrpipe = "ocrpipe.ocr_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ocrpipe*"]

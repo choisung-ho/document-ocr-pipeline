@@ -136,3 +136,19 @@ python -m unittest discover -s tests -v
 원본 업로드 문서, OCR 결과 JSON, 추출 이미지, 개인 설정은 포함하지 않습니다. 실행 시 생기는 `uploads/`, `job_results/`, `assets/`는 Git에서 제외합니다. 원래 프로젝트의 문서 전처리·OCR 기능을 공개용으로 분리한 저장소입니다.
 
 공개 준비 시 실행한 검사와 범위는 [검증 기록](docs/PUBLIC_VALIDATION.md)에 정리했습니다.
+
+## 재사용 가능한 OCR 라이브러리
+
+로컬의 `ocrpipe` 라이브러리는 [`library/`](library/README.md)에 별도로 포함했습니다. 기존 웹 앱은 유지하며, 라이브러리와 앱이 자동으로 통합됐다고 주장하지 않습니다. PDF 텍스트 레이어와 HWPX XML 본문을 직접 추출하고 이미지 OCR을 분리합니다.
+
+```bash
+pip install -e ./library
+# PaddlePaddle CPU/GPU 설치는 library/README.md의 환경별 안내 참고
+```
+
+```python
+from ocrpipe import analyze
+blocks = analyze("sample.hwpx")
+```
+
+`library/ocrpipe/eval_cer.py`에는 정답 텍스트와 비교하는 CER 측정 도구가 있습니다. 모델 신뢰도를 정확도로 표현하지 않으며 성능 개선은 별도 평가가 필요합니다. 원문 보고서·업로드 파일·정답 초안은 포함하지 않았습니다.
