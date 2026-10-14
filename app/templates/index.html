@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OCR 테스트</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260628-1" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <div class="header">
+          <div>
+            <h1>문서 전처리 테스트</h1>
+            <p>원문 구조를 우선 보존하고 필요한 페이지·표·이미지만 PaddleOCR-VL-1.6으로 처리합니다.</p>
+          </div>
+          <span id="jobStatus" class="status idle">대기</span>
+        </div>
+
+        <div class="progress-summary" aria-live="polite">
+          <div class="progress-copy">
+            <span id="progressMessage">대기 중</span>
+            <strong id="progressPercent">0%</strong>
+          </div>
+          <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <form id="uploadForm" class="form">
+          <div class="field">
+            <span>모델</span>
+            <div class="model-display">PaddleOCR-VL-1.6</div>
+          </div>
+
+          <label class="field">
+            <span>문서 유형</span>
+            <select name="document_type">
+              <option value="general">일반 문서 (RAG 대상)</option>
+              <option value="evidence">증빙 문서 (RAG 제외)</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>보안 등급</span>
+            <select name="security_level">
+              <option value="internal">내부</option>
+              <option value="restricted">제한</option>
+              <option value="public">공개</option>
+            </select>
+          </label>
+
+          <label class="field wide-field">
+            <span>문서 제목 <small>선택</small></span>
+            <input name="title" type="text" placeholder="비워두면 파일명 사용" />
+          </label>
+
+          <label class="field wide-field">
+            <span>접근 그룹 <small>쉼표로 구분</small></span>
+            <input name="access_groups" type="text" placeholder="예: planning, executive" />
+          </label>
+
+          <label class="dropzone" id="dropzone">
+            <input
+              id="document"
+              name="document"
+              type="file"
+              accept=".pdf,.docx,.hwpx,.png,.jpg,.jpeg,.bmp,.tif,.tiff,.webp"
+              required
+            />
+            <span id="fileLabel">HWPX·DOCX·PDF·이미지 파일 선택</span>
+          </label>
+
+          <button id="submitBtn" type="submit">처리 시작</button>
+        </form>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <div class="section-title">
+            <h2>처리 진행률</h2>
+            <span id="pageCount">0개 처리 단위</span>
+          </div>
+          <div id="pages" class="pages empty">작업을 시작하면 처리 방식과 소요 시간이 표시됩니다.</div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">
+            <h2>구조화 JSON</h2>
+            <button id="copyBtn" type="button" disabled>복사</button>
+          </div>
+          <pre id="resultJson">[]</pre>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js?v=20260628-1"></script>
+  </body>
+</html>

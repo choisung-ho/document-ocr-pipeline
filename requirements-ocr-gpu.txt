@@ -1,0 +1,4 @@
+# NVIDIA Linux server only. Install this instead of requirements-ocr.txt.
+# Select the PaddlePaddle package index that matches the server CUDA version when needed.
+paddlepaddle-gpu==3.2.0
+paddleocr[doc-parser]>=3.6.0,<4.0.0

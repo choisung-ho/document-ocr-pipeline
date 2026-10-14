@@ -1,0 +1,5 @@
+# CPU / Apple Silicon development environment.
+# NVIDIA servers should use requirements-ocr-gpu.txt instead.
+# See: https://www.paddleocr.ai/latest/en/version3.x/pipeline_usage/PaddleOCR-VL.html
+paddlepaddle==3.2.0
+paddleocr[doc-parser]>=3.6.0,<4.0.0
